@@ -9,6 +9,11 @@ namespace Meow.Util.ADB.Engine.CommonStruct.Enums
     public enum UIEventType
     {
         /// <summary>
+        /// 测试用空值
+        /// </summary>
+        TYPE_UNSPEC = 0,
+
+        /// <summary>
         /// 表示点击视图的事件。
         /// </summary>
         TYPE_VIEW_CLICKED = 1,

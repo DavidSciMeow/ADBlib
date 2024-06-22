@@ -13,10 +13,6 @@ namespace Meow.Util.ADB
     public class ADBEngine : IDisposable
     {
         /// <summary>
-        /// <inheritdoc/>
-        /// </summary>
-        private bool disposedValue;
-        /// <summary>
         /// 构造函数，创建ADBEngine实例。可选参数restart决定是否在实例创建时重启ADB服务。
         /// </summary>
         public ADBEngine(bool restart = false)
@@ -83,10 +79,6 @@ namespace Meow.Util.ADB
             return Devices.ToArray();
         }
         /// <summary>
-        /// 释放ADBEngine实例，并可选地停止ADB服务。
-        /// </summary>
-        protected virtual void Dispose(bool disposing) => _ = (!disposedValue && disposing) ? (Execute("kill-server"), disposedValue = true) : ("", false);
-        /// <summary>
         /// 析构函数，当ADBEngine实例被销毁时停止ADB服务。
         /// </summary>
         ~ADBEngine() => Execute("kill-server");
@@ -95,7 +87,7 @@ namespace Meow.Util.ADB
         /// </summary>
         public void Dispose()
         {
-            Dispose(disposing: true);
+            Execute("kill-server");
             GC.SuppressFinalize(this);
         }
     }

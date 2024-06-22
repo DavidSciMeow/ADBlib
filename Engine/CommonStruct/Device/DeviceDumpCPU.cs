@@ -17,66 +17,6 @@ namespace Meow.Util.ADB.Engine.CommonStruct
     public partial class Device : IDisposable
     {
         /// <summary>
-        /// 朝当前焦点输入文本
-        /// </summary>
-        /// <param name="input"></param>
-        public void InputToCurrentFocus(string input) => ExecuteProcess($"-s {DeviceID} shell am broadcast -a ADB_INPUT_TEXT --es msg '{input}'");
-        /// <summary>
-        /// 删除当前焦点文本(一个)
-        /// </summary>
-        public void InputDelCurrentFocus() => ExecuteShellCommand(ShellCommands.Keyevent(Key.KEYCODE_DEL));
-        /// <summary>
-        /// 删除当前焦点文本(若干)
-        /// </summary>
-        public void InputDelCurrentFocus(int length)
-        {
-            for (int i = 0; i < length; i++)
-            {
-                ExecuteShellCommand(ShellCommands.Keyevent(Key.KEYCODE_DEL));
-                //Task.Delay(500).Wait();
-            }
-        }
-
-        /// <summary>
-        /// 获取当前设备的UI信息类(解析)
-        /// </summary>
-        /// <returns></returns>
-        public UIRoot GetUI(bool Compressed = false) => new UIRoot(JObject.Parse(GetUIp(Compressed)), this);
-        /// <summary>
-        /// 获取当前设备的UI信息(原始)
-        /// </summary>
-        /// <returns></returns>
-        /// <exception cref="Exception"></exception>
-        public string GetUIp(bool Compressed = false)
-        {
-            var lines = ExecuteProcess($"-s {DeviceID} shell uiautomator dump {(Compressed ? "--compressed" : "")}").ToLowerInvariant();
-            while (true)
-            {
-                if (lines.Contains("UI hierchary dumped to".ToLowerInvariant()))
-                {
-                    var linex = ExecuteProcess($"-s {DeviceID} pull /sdcard/window_dump.xml ./temp.xml").ToLowerInvariant();
-                    if (linex.Contains("pulled".ToLowerInvariant()))
-                    {
-                        var doc = new XmlDocument();
-                        doc.Load("./temp.xml");
-                        string jsonText = JsonConvert.SerializeXmlNode(doc);
-                        File.Delete("./temp.xml");
-                        return jsonText;
-                    }
-                    else
-                    {
-                        throw new Exception("Device Not Pullable");
-                    }
-                }
-                else
-                {
-                    lines = ExecuteProcess($"-s {DeviceID} shell uiautomator dump {(Compressed ? "--compressed" : "")}").ToLowerInvariant();
-                }
-            }
-            
-        }
-
-        /// <summary>
         /// 获取系统窗体信息 原始
         /// </summary>
         /// <returns></returns>
@@ -173,38 +113,5 @@ namespace Meow.Util.ADB.Engine.CommonStruct
             }
             return result;
         }
-
-        /// <summary>
-        /// 安装apk包
-        /// </summary>
-        /// <param name="path"></param>
-        /// <returns></returns>
-        public bool InstallApk(string path) => ExecuteProcess($"-s {DeviceID} {AdbCommands.InstallApk(path)}").ToLowerInvariant().Contains("success");
-
-        /// <summary>
-        /// 模拟按键
-        /// </summary>
-        /// <param name="key"></param>
-        public void PressKey(Key key) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Keyevent(key));
-        /// <summary>
-        /// 模拟滑动屏幕
-        /// </summary>
-        /// <param name="x1">起始点x坐标</param>
-        /// <param name="y1">起始点y坐标</param>
-        /// <param name="x2">终止点x坐标</param>
-        /// <param name="y2">终止点y坐标</param>
-        /// <param name="duration">滑动时长</param>
-        public void Swipe(int x1, int y1, int x2, int y2, int duration) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Swipe(x1, y1, x2, y2, duration));
-        /// <summary>
-        /// 截屏到某个具体路径
-        /// </summary>
-        /// <param name="path">路径位置</param>
-        public void Screencap(string path) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Screencap(path));
-        /// <summary>
-        /// 拉取对应设备的文件
-        /// </summary>
-        /// <param name="path">远端路径</param>
-        /// <param name="locpath">本地存储路径</param>
-        public void Pull(string path, string locpath) => ADBEngine.DeviceExecute(DeviceID, AdbCommands.Pull(path, locpath));
     }
 }

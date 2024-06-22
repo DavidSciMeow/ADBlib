@@ -1,9 +1,11 @@
 ﻿using Meow.Util.ADB.Engine.CommandEnums;
+using Meow.Util.ADB.Engine.CommonStruct.UIStructs;
 using Meow.Util.ADB.Engine.Enums;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,6 +16,10 @@ namespace Meow.Util.ADB.Engine.CommonStruct
     /// </summary>
     public partial class Device : IDisposable
     {
+        /// <summary>
+        /// 保证所有子程序均退出的PID列表
+        /// </summary>
+        private readonly List<int> PidList = new List<int>();
         /// <summary>
         /// 设备名
         /// </summary>
@@ -26,14 +32,6 @@ namespace Meow.Util.ADB.Engine.CommonStruct
         /// 设备安装的所有包
         /// </summary>
         public List<string> DevicePackage { get; } = new List<string>();
-        /// <summary>
-        /// 是否可以使用ADB键盘输入(需要安装com.android.adbkeyboard)
-        /// </summary>
-        public bool CanInputWithADBKeyboard { get; } = false;
-        /// <summary>
-        /// UI的状态监控
-        /// </summary>
-        public bool DeviceUIStateMonitor { get; private set; } = true;
 
         /// <summary>
         /// 构造方法
@@ -45,7 +43,6 @@ namespace Meow.Util.ADB.Engine.CommonStruct
         {
             DeviceID = deviceID;
             State = state;
-            DeviceUIStateMonitor = deviceUIStateMonitor;
             var pklist = ExecuteShellProcess(ShellCommands.PackageList()).Split(new[] { "\r\n", "\r", "\n" },StringSplitOptions.None);
             foreach(var i in pklist)
             {
@@ -58,48 +55,8 @@ namespace Meow.Util.ADB.Engine.CommonStruct
                     }
                 }
             }
-            ExecuteUIShellCommand();
-
-
         }
 
-        /// <summary>
-        /// UI的事件进程
-        /// </summary>
-        private Process DeviceUIEventProcess { get; set; }
-
-        /// <summary>
-        /// 监控UI调用
-        /// </summary>
-        public void ExecuteUIShellCommand()
-        {
-            DeviceUIEventProcess = Process.Start(new ProcessStartInfo
-            {
-                FileName = "./Tools/adb.exe",
-                Arguments = $"-s {DeviceID} shell uiautomator events",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            DeviceUIEventProcess.OutputDataReceived += (sender, e) => DeviceUIEvent?.Invoke(e.Data);
-            DeviceUIEventProcess.Start();
-            DeviceUIEventProcess.BeginOutputReadLine();
-            DeviceUIEventProcess.Exited += (d, e) => {
-                if (DeviceUIStateMonitor)
-                {
-                    Console.WriteLine("正在重启UI监控");
-                    ExecuteUIShellCommand();
-                }
-                else
-                {
-                    Console.WriteLine("已经退出UI监控");
-                }
-            };
-        }
-        /// <summary>
-        /// 强制关闭监控UI调用
-        /// </summary>
-        public void ExecuteUIShellCommandClose() => DeviceUIEventProcess.Close();
 
         /// <summary>
         /// 在主线程执行命令并等待(默认等待1秒)
@@ -108,7 +65,7 @@ namespace Meow.Util.ADB.Engine.CommonStruct
         /// <param name="milisecWait">等待间隔</param>
         public void ExecuteShellCommand(string command, int milisecWait = 1000)
         {
-            Process.Start(new ProcessStartInfo
+            var p = Process.Start(new ProcessStartInfo
             {
                 FileName = "./Tools/adb.exe",
                 Arguments = $"-s {DeviceID} shell {command}",
@@ -118,6 +75,7 @@ namespace Meow.Util.ADB.Engine.CommonStruct
                 UseShellExecute = false,
                 CreateNoWindow = true,
             });
+            PidList.Add(p.Id);
             if (milisecWait > 0)
             {
                 Task.Delay(milisecWait).Wait();
@@ -141,12 +99,12 @@ namespace Meow.Util.ADB.Engine.CommonStruct
                 CreateNoWindow = true,
             }))
             {
+                PidList.Add(proc.Id);
                 var read = proc.StandardOutput.ReadToEnd();
                 proc.WaitForExit();
                 return read;
             }
         }
-
         /// <summary>
         /// 执行shell进程并获取结果
         /// </summary>
@@ -165,11 +123,56 @@ namespace Meow.Util.ADB.Engine.CommonStruct
                 CreateNoWindow = true,
             }))
             {
+                PidList.Add(proc.Id);
                 var read = proc.StandardOutput.ReadToEnd();
                 proc.WaitForExit();
                 return read;
             }
         }
+
+        /// <summary>
+        /// 设备点击屏幕 x,y
+        /// </summary>
+        /// <param name="x">x 坐标</param>
+        /// <param name="y">y 坐标</param>
+        public void Tap(long x, long y) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Tap(x, y));
+        /// <summary>
+        /// 设备点击屏幕 x,y
+        /// </summary>
+        /// <param name="pos">坐标元组</param>
+        public void Tap((long x, long y) pos) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Tap(pos.x, pos.y));
+        /// <summary>
+        /// 安装apk包
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns></returns>
+        public bool InstallApk(string path) => ExecuteProcess($"-s {DeviceID} {AdbCommands.InstallApk(path)}").ToLowerInvariant().Contains("success");
+        /// <summary>
+        /// 模拟按键
+        /// </summary>
+        /// <param name="key"></param>
+        public void PressKey(Key key) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Keyevent(key));
+        /// <summary>
+        /// 模拟滑动屏幕
+        /// </summary>
+        /// <param name="x1">起始点x坐标</param>
+        /// <param name="y1">起始点y坐标</param>
+        /// <param name="x2">终止点x坐标</param>
+        /// <param name="y2">终止点y坐标</param>
+        /// <param name="duration">滑动时长</param>
+        public void Swipe(int x1, int y1, int x2, int y2, int duration) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Swipe(x1, y1, x2, y2, duration));
+        /// <summary>
+        /// 截屏到某个具体路径
+        /// </summary>
+        /// <param name="path">路径位置</param>
+        public void Screencap(string path) => ADBEngine.DeviceExecute(DeviceID, ShellCommands.Screencap(path));
+        /// <summary>
+        /// 拉取对应设备的文件
+        /// </summary>
+        /// <param name="path">远端路径</param>
+        /// <param name="locpath">本地存储路径</param>
+        public void Pull(string path, string locpath) => ADBEngine.DeviceExecute(DeviceID, AdbCommands.Pull(path, locpath));
+
 
         /// <summary>
         /// 打印设备ID和设备状态
@@ -181,8 +184,17 @@ namespace Meow.Util.ADB.Engine.CommonStruct
         /// </summary>
         public void Dispose()
         {
-            DeviceUIEventProcess?.Close();
-            DeviceUIEventProcess?.Dispose();
+            foreach(var i in PidList)
+            {
+                try
+                {
+                    Process.GetProcessById(i)?.Kill();
+                }
+                catch
+                {
+
+                }
+            }
         }
         /// <summary>
         /// 析构方法
